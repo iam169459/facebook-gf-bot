@@ -1,0 +1,8 @@
+{
+  "name": "facebook-gf-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@vercel/blob": "^2.8.0"
+  }
+}
