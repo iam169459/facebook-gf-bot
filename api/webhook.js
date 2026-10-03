@@ -31,6 +31,30 @@ export default async function handler(req, res) {
             const FALLBACK = "Sorry baby, I'm a bit distracted right now 😘";
             let reply = FALLBACK;
 
+            const sendAction = async (action) => {
+              try {
+                const res = await fetch(
+                  `https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      recipient: { id: senderId },
+                      sender_action: action,
+                    }),
+                    signal: AbortSignal.timeout(8000),
+                  }
+                );
+                if (res.ok) console.log("action:", action, "->", senderId);
+                else console.error("action failed:", action, res.status, (await res.text()).slice(0, 200));
+              } catch (err) {
+                console.error("action error:", action, err?.message || err);
+              }
+            };
+
+            await Promise.all([sendAction("mark_seen"), sendAction("typing_on")]);
+            const startedAt = Date.now();
+
             try {
               const aiRes = await fetch(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -49,7 +73,7 @@ export default async function handler(req, res) {
                     max_tokens: cfg.maxTokens,
                     temperature: cfg.temperature,
                   }),
-                  signal: AbortSignal.timeout(25000),
+                  signal: AbortSignal.timeout(15000),
                 }
               );
 
@@ -62,6 +86,12 @@ export default async function handler(req, res) {
               }
             } catch (err) {
               console.error("AI failed:", err?.name || "Error", err?.message || err);
+            }
+
+            const targetTyping = Math.min(5000, Math.max(1200, 700 + reply.length * 55));
+            const remaining = targetTyping - (Date.now() - startedAt);
+            if (remaining > 0) {
+              await new Promise((r) => setTimeout(r, remaining));
             }
 
             try {
@@ -86,6 +116,8 @@ export default async function handler(req, res) {
             } catch (err) {
               console.error("Messenger send error:", err?.message || err);
             }
+
+            await sendAction("typing_off");
           }
         }
       }
