@@ -1,3 +1,5 @@
+import { waitUntil } from "@vercel/functions";
+
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -26,9 +28,12 @@ export default async function handler(req, res) {
     }
 
     // Ack immediately so Meta never retries while we simulate human delays.
+    // waitUntil keeps the function alive until processing (delays + reply) finishes.
     res.status(200).send("EVENT_RECEIVED");
 
-    try {
+    waitUntil(
+      (async () => {
+        try {
       const { getConfig, buildSystemPrompt } = await import("../lib/config.js");
       const cfg = await getConfig();
 
@@ -173,9 +178,11 @@ export default async function handler(req, res) {
           }
         }
       }
-    } catch (err) {
-      console.error("Webhook processing failed:", err?.message || err);
-    }
+        } catch (err) {
+          console.error("Webhook processing failed:", err?.message || err);
+        }
+      })()
+    );
 
     return;
   }

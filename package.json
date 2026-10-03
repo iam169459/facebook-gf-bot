@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@vercel/blob": "^2.8.0"
+    "@vercel/blob": "^2.8.0",
+    "@vercel/functions": "^3.9.11"
   },
   "description": "Messenger AI bot with live settings dashboard"
 }
