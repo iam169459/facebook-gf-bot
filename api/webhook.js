@@ -70,6 +70,8 @@ export default async function handler(req, res) {
             appendInbox,
             claimBurst,
             claimItems,
+            scheduleBurst,
+            confirmBurst,
             finalizeInbox,
             loadFacts,
             saveFacts,
@@ -121,12 +123,24 @@ export default async function handler(req, res) {
               await appendInbox(senderId, { text: p.text, mid: p.mid, e: p.edit });
             }
             const idle = Number.isFinite(cfg.burstIdle) ? cfg.burstIdle : 6000;
-            if (idle > 0) await sleep(idle);
 
-            const owner = await claimBurst(senderId);
-            if (!owner) {
-              console.log("burst: another reply in flight ->", senderId);
-              return;
+            if (idle > 0) {
+              const nonce = await scheduleBurst(senderId, idle);
+              if (!nonce) {
+                console.log("burst: waiting for scheduled waker ->", senderId);
+                return;
+              }
+              await sleep(idle);
+              if (!(await confirmBurst(senderId, nonce))) {
+                console.log("burst: another owner took over ->", senderId);
+                return;
+              }
+            } else {
+              const owner = await claimBurst(senderId);
+              if (!owner) {
+                console.log("burst: another reply in flight ->", senderId);
+                return;
+              }
             }
 
             const fresh = await claimItems(senderId);
