@@ -134,6 +134,7 @@ export default async function handler(req, res) {
             }
             await Promise.all(openingActions.map((a) => sendAction(a)));
             const startedAt = Date.now();
+            const aiStartedAt = Date.now();
 
             try {
               const aiRes = await fetch(
@@ -166,10 +167,26 @@ export default async function handler(req, res) {
                 );
               } else {
                 reply = data.choices?.[0]?.message?.content || fallback;
-                console.log("AI ok | model:", cfg.model, "| reply:", reply.slice(0, 80));
+                console.log(
+                  "AI ok | model:",
+                  cfg.model,
+                  "| took:",
+                  ((Date.now() - aiStartedAt) / 1000).toFixed(1) + "s",
+                  "| reply:",
+                  reply.slice(0, 80)
+                );
               }
             } catch (err) {
-              console.error("AI failed:", err?.name || "Error", err?.message || err);
+              console.error(
+                "AI failed:",
+                err?.name || "Error",
+                "| after:",
+                ((Date.now() - aiStartedAt) / 1000).toFixed(1) + "s",
+                "| aiTimeout:",
+                cfg.aiTimeout,
+                "|",
+                err?.message || err
+              );
             }
 
             const sendText = async (text) => {
