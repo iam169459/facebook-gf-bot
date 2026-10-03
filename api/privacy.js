@@ -25,11 +25,12 @@ const html = `<!DOCTYPE html>
   <ul>
     <li><strong>Your messages</strong> — the text you send to our page, so we can reply.</li>
     <li><strong>Your Facebook page-scoped ID</strong> — the identifier Meta provides to deliver replies to the right conversation.</li>
+    <li><strong>Conversation memory</strong> — your last ~15 messages (for context in replies) and a small list of facts learned from the chat (for example, your interests or favorites), both stored privately and only for this purpose.</li>
     <li><strong>Technical logs</strong> — timestamps and error information used only for debugging (for example, if a reply fails to send).</li>
   </ul>
 
   <h2>How it is used</h2>
-  <p>Messages are used for one purpose: to generate your reply. Message content is sent to NVIDIA's API (as our AI inference provider) and returned output is sent back to you. Messages are never used for advertising, profiling, or sold to anyone.</p>
+  <p>Messages are used for one purpose: to generate your reply. Message content is sent to NVIDIA's API (as our AI inference provider) and returned output is sent back to you. Stored memory is used only to make replies feel consistent across a conversation. Messages are never used for advertising, profiling, or sold to anyone.</p>
 
   <h2>Who processes your data</h2>
   <ul>
@@ -39,7 +40,7 @@ const html = `<!DOCTYPE html>
   </ul>
 
   <h2>Retention</h2>
-  <p>Diagnostic logs are short-lived and automatically purged by our hosting provider. Conversation content is not stored on our servers; each reply is generated from the message you sent and then discarded.</p>
+  <p>Diagnostic logs are short-lived and automatically purged by our hosting provider. Conversation memory (recent messages and learned facts) is stored only while the page has an active conversation with you, is limited to the last ~15 messages and up to 40 short facts, and is deleted when you request deletion below or remove the page's access.</p>
 
   <h2>Your choices</h2>
   <ul>
