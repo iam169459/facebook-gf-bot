@@ -208,33 +208,55 @@ export default async function handler(req, res) {
                 }
               }
               messages.push({ role: "user", content: userText });
-              const aiRes = await fetch(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${NVIDIA_API_KEY}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    model: cfg.model,
-                    messages,
-                    max_tokens: cfg.maxTokens,
-                    temperature: cfg.temperature,
-                  }),
-                  signal: AbortSignal.timeout((cfg.aiTimeout || 15) * 1000),
-                }
-              );
+              const callAI = async (maxTokens) => {
+                const res = await fetch(
+                  "https://integrate.api.nvidia.com/v1/chat/completions",
+                  {
+                    method: "POST",
+                    headers: {
+                      Authorization: `Bearer ${NVIDIA_API_KEY}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      model: cfg.model,
+                      messages,
+                      max_tokens: maxTokens,
+                      temperature: cfg.temperature,
+                    }),
+                    signal: AbortSignal.timeout((cfg.aiTimeout || 30) * 1000),
+                  }
+                );
+                const d = await res.json();
+                return { ok: res.ok, status: res.status, data: d };
+              };
 
-              const data = await aiRes.json();
-              if (!aiRes.ok) {
+              const first = await callAI(cfg.maxTokens);
+              if (!first.ok) {
                 console.error(
                   "AI API error:",
-                  aiRes.status,
-                  JSON.stringify(data).slice(0, 300)
+                  first.status,
+                  JSON.stringify(first.data).slice(0, 300)
                 );
               } else {
-                reply = data.choices?.[0]?.message?.content || fallback;
+                let content = String(
+                  first.data.choices?.[0]?.message?.content || ""
+                ).trim();
+                if (!content) {
+                  console.log("AI returned empty content — retrying with more tokens");
+                  try {
+                    const second = await callAI(
+                      Math.min(1000, Math.max(600, cfg.maxTokens))
+                    );
+                    if (second.ok) {
+                      content = String(
+                        second.data.choices?.[0]?.message?.content || ""
+                      ).trim();
+                    }
+                  } catch (e) {
+                    console.error("AI retry failed:", e?.message || e);
+                  }
+                }
+                reply = content || fallback;
                 console.log(
                   "AI ok | model:",
                   cfg.model,
