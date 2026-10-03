@@ -471,7 +471,7 @@ export default async function handler(req, res) {
                       },
                       { role: "user", content: String(userText).slice(0, 1000) },
                     ],
-                    max_tokens: 120,
+                    max_tokens: 1000,
                     temperature: 0.1,
                   }),
                   signal: AbortSignal.timeout(20000),
@@ -481,6 +481,12 @@ export default async function handler(req, res) {
                 const exData = await exRes.json();
                 const newFacts = parseFacts(
                   exData.choices?.[0]?.message?.content || ""
+                );
+                console.log(
+                  "fact extraction:",
+                  newFacts.length ? newFacts.length + " raw" : "none",
+                  "|",
+                  senderId
                 );
                 if (newFacts.length) {
                   const existing = await loadFacts(senderId);
