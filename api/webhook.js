@@ -7,7 +7,7 @@ function sleep(ms) {
 export function splitReply(text) {
   const raw = String(text || "");
   const chunks = [];
-  for (const part of raw.split(/\n+/)) {
+  for (const part of raw.split(/\n+|\|/)) {
     const trimmed = part.trim();
     if (!trimmed) continue;
     if (trimmed.length <= 150) {
@@ -60,9 +60,8 @@ export default async function handler(req, res) {
     waitUntil(
       (async () => {
         try {
-          const { getConfig, buildSystemPrompt, dhakaHour } = await import(
-            "../lib/config.js"
-          );
+          const { getConfig, buildSystemPrompt, dhakaHour, sentimentHint } =
+            await import("../lib/config.js");
           const cfg = await getConfig();
 
       for (const entry of body.entry || []) {
@@ -75,12 +74,15 @@ export default async function handler(req, res) {
             const rdMax = Number.isFinite(cfg.readDelayMax)
               ? Math.max(cfg.readDelayMax, rdMin)
               : 4000;
-            const readWait =
+            let readWait =
               cfg.readDelayMode === "fixed"
                 ? Number.isFinite(cfg.readDelay)
                   ? cfg.readDelay
                   : 2000
                 : Math.floor(Math.random() * (rdMax - rdMin + 1)) + rdMin;
+            if (cfg.readLengthFactor !== false) {
+              readWait += Math.min(userText.length * 25, 4000);
+            }
             if (readWait > 0) {
               console.log("read delay:", readWait + "ms", "->", senderId);
               await sleep(readWait);
@@ -92,6 +94,12 @@ export default async function handler(req, res) {
                 console.log("late-night slow-down:", extra + "ms", "->", senderId);
                 await sleep(extra);
               }
+            }
+
+            if (cfg.busyChance > 0 && Math.random() * 100 < cfg.busyChance) {
+              const busyWait = 2000 + Math.floor(Math.random() * 6000);
+              console.log("busy/distraction:", busyWait + "ms", "->", senderId);
+              await sleep(busyWait);
             }
 
             const fallback =
@@ -137,6 +145,8 @@ export default async function handler(req, res) {
             const aiStartedAt = Date.now();
 
             try {
+              const sysPrompt = buildSystemPrompt(cfg);
+              const hint = sentimentHint(userText);
               const aiRes = await fetch(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
                 {
@@ -148,7 +158,7 @@ export default async function handler(req, res) {
                   body: JSON.stringify({
                     model: cfg.model,
                     messages: [
-                      { role: "system", content: buildSystemPrompt(cfg) },
+                      { role: "system", content: hint ? sysPrompt + "\n" + hint : sysPrompt },
                       { role: "user", content: userText },
                     ],
                     max_tokens: cfg.maxTokens,
@@ -219,7 +229,9 @@ export default async function handler(req, res) {
             };
 
             const chunks =
-              cfg.multiMessage !== false ? splitReply(reply) : [reply];
+              cfg.multiMessage !== false
+                ? splitReply(reply)
+                : [String(reply).replace(/\s*\|\s*/g, " ")];
             if (chunks.length > 1) {
               console.log("sending in", chunks.length, "bubbles |", senderId);
             }
@@ -228,7 +240,7 @@ export default async function handler(req, res) {
             const maxD = Number.isFinite(cfg.maxDelay) ? cfg.maxDelay : 5000;
             const targetTyping = Math.min(
               Math.max(maxD, minD),
-              Math.max(minD, 700 + reply.length * 55)
+              Math.max(minD, 700 + reply.length * 55 + Math.floor(Math.random() * 800))
             );
             const remaining = targetTyping - (Date.now() - startedAt);
             if (remaining > 0) {

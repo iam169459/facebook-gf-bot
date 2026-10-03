@@ -14,7 +14,9 @@ async function callNvidia(cfg, userText) {
   const key = process.env.NVIDIA_API_KEY;
   if (!key) throw new Error("NVIDIA_API_KEY is not set");
 
-  const { buildSystemPrompt } = await import("../lib/config.js");
+  const { buildSystemPrompt, sentimentHint } = await import("../lib/config.js");
+  const sys = buildSystemPrompt(cfg);
+  const hint = sentimentHint(userText);
   const res = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -24,7 +26,7 @@ async function callNvidia(cfg, userText) {
     body: JSON.stringify({
       model: cfg.model,
       messages: [
-        { role: "system", content: buildSystemPrompt(cfg) },
+        { role: "system", content: hint ? sys + "\n" + hint : sys },
         { role: "user", content: userText },
       ],
       max_tokens: cfg.maxTokens,
