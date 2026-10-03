@@ -83,6 +83,15 @@ export default async function handler(req, res) {
         return res.status(500).json({ error: err.message });
       }
     }
+    if (action === "reset") {
+      try {
+        const settings = await saveConfig({});
+        return res.status(200).json({ ok: true, settings });
+      } catch (err) {
+        console.error("Reset failed:", err);
+        return res.status(500).json({ error: err.message });
+      }
+    }
     return res.status(400).json({ error: "Unknown action" });
   }
 

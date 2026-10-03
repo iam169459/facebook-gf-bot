@@ -28,8 +28,9 @@ export default async function handler(req, res) {
             const senderId = event.sender.id;
             const userText = event.message.text;
 
-            const FALLBACK = "Sorry baby, I'm a bit distracted right now 😘";
-            let reply = FALLBACK;
+            const fallback = cfg.fallbackReply || "Sorry baby, I'm a bit distracted right now 😘";
+            let reply = fallback;
+            let typingOn = false;
 
             const sendAction = async (action) => {
               try {
@@ -52,7 +53,13 @@ export default async function handler(req, res) {
               }
             };
 
-            await Promise.all([sendAction("mark_seen"), sendAction("typing_on")]);
+            const openingActions = [];
+            if (cfg.markSeen !== false) openingActions.push("mark_seen");
+            if (cfg.typingIndicator !== false) {
+              openingActions.push("typing_on");
+              typingOn = true;
+            }
+            await Promise.all(openingActions.map((a) => sendAction(a)));
             const startedAt = Date.now();
 
             try {
@@ -73,7 +80,7 @@ export default async function handler(req, res) {
                     max_tokens: cfg.maxTokens,
                     temperature: cfg.temperature,
                   }),
-                  signal: AbortSignal.timeout(15000),
+                  signal: AbortSignal.timeout((cfg.aiTimeout || 15) * 1000),
                 }
               );
 
@@ -81,14 +88,19 @@ export default async function handler(req, res) {
               if (!aiRes.ok) {
                 console.error("AI API error:", aiRes.status, JSON.stringify(data).slice(0, 300));
               } else {
-                reply = data.choices?.[0]?.message?.content || FALLBACK;
+                reply = data.choices?.[0]?.message?.content || fallback;
                 console.log("AI ok | model:", cfg.model, "| reply:", reply.slice(0, 80));
               }
             } catch (err) {
               console.error("AI failed:", err?.name || "Error", err?.message || err);
             }
 
-            const targetTyping = Math.min(5000, Math.max(1200, 700 + reply.length * 55));
+            const minD = Number.isFinite(cfg.minDelay) ? cfg.minDelay : 1200;
+            const maxD = Number.isFinite(cfg.maxDelay) ? cfg.maxDelay : 5000;
+            const targetTyping = Math.min(
+              Math.max(maxD, minD),
+              Math.max(minD, 700 + reply.length * 55)
+            );
             const remaining = targetTyping - (Date.now() - startedAt);
             if (remaining > 0) {
               await new Promise((r) => setTimeout(r, remaining));
@@ -117,7 +129,7 @@ export default async function handler(req, res) {
               console.error("Messenger send error:", err?.message || err);
             }
 
-            await sendAction("typing_off");
+            if (typingOn) await sendAction("typing_off");
           }
         }
       }
