@@ -4,7 +4,7 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function splitReply(text) {
+export function splitReply(text) {
   const raw = String(text || "");
   const chunks = [];
   for (const part of raw.split(/\n+/)) {
