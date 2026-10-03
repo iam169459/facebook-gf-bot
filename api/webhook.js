@@ -60,8 +60,14 @@ export default async function handler(req, res) {
     waitUntil(
       (async () => {
         try {
-          const { getConfig, buildSystemPrompt, dhakaHour, sentimentHint } =
-            await import("../lib/config.js");
+          const {
+            getConfig,
+            buildSystemPrompt,
+            dhakaHour,
+            sentimentHint,
+            loadHistory,
+            saveHistory,
+          } = await import("../lib/config.js");
           const cfg = await getConfig();
 
       for (const entry of body.entry || []) {
@@ -88,6 +94,36 @@ export default async function handler(req, res) {
               await sleep(readWait);
             }
 
+            if (
+              cfg.reactionChance > 0 &&
+              Math.random() * 100 < cfg.reactionChance &&
+              event.message.mid
+            ) {
+              const reactionTypes = ["LOVE", "HAHA", "LIKE", "WOW"];
+              const rtype =
+                reactionTypes[Math.floor(Math.random() * reactionTypes.length)];
+              try {
+                const rr = await fetch(
+                  `https://graph.facebook.com/v21.0/${event.message.mid}/reactions?type=${rtype}&access_token=${PAGE_ACCESS_TOKEN}`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: "{}",
+                    signal: AbortSignal.timeout(8000),
+                  }
+                );
+                if (rr.ok) console.log("reaction:", rtype, "->", senderId);
+                else
+                  console.error(
+                    "reaction failed:",
+                    rr.status,
+                    (await rr.text()).slice(0, 200)
+                  );
+              } catch (err) {
+                console.error("reaction error:", err?.message || err);
+              }
+            }
+
             if (cfg.moodAware !== false && (dhakaHour() >= 23 || dhakaHour() < 6)) {
               const extra = Math.floor(Math.random() * 4000);
               if (extra > 0) {
@@ -106,6 +142,8 @@ export default async function handler(req, res) {
               cfg.fallbackReply || "Sorry baby, I'm a bit distracted right now 😘";
             let reply = fallback;
             let typingOn = false;
+            const history =
+              cfg.memoryOn !== false ? await loadHistory(senderId) : [];
 
             const sendAction = async (action) => {
               try {
@@ -135,6 +173,11 @@ export default async function handler(req, res) {
             };
 
             const openingActions = [];
+            if (cfg.ignoreChance > 0 && Math.random() * 100 < cfg.ignoreChance) {
+              console.log("left on read ->", senderId);
+              if (cfg.markSeen !== false) await sendAction("mark_seen");
+              continue;
+            }
             if (cfg.markSeen !== false) openingActions.push("mark_seen");
             if (cfg.typingIndicator !== false) {
               openingActions.push("typing_on");
@@ -147,6 +190,24 @@ export default async function handler(req, res) {
             try {
               const sysPrompt = buildSystemPrompt(cfg);
               const hint = sentimentHint(userText);
+              const messages = [
+                {
+                  role: "system",
+                  content: hint ? sysPrompt + "\n" + hint : sysPrompt,
+                },
+              ];
+              for (const h of history) {
+                if (h && h.u) {
+                  messages.push({ role: "user", content: String(h.u).slice(0, 500) });
+                  if (h.a) {
+                    messages.push({
+                      role: "assistant",
+                      content: String(h.a).slice(0, 1500),
+                    });
+                  }
+                }
+              }
+              messages.push({ role: "user", content: userText });
               const aiRes = await fetch(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
                 {
@@ -157,10 +218,7 @@ export default async function handler(req, res) {
                   },
                   body: JSON.stringify({
                     model: cfg.model,
-                    messages: [
-                      { role: "system", content: hint ? sysPrompt + "\n" + hint : sysPrompt },
-                      { role: "user", content: userText },
-                    ],
+                    messages,
                     max_tokens: cfg.maxTokens,
                     temperature: cfg.temperature,
                   }),
@@ -216,15 +274,18 @@ export default async function handler(req, res) {
                 );
                 if (sendRes.ok) {
                   console.log("Sent reply to", senderId, "|", text.slice(0, 60));
+                  return true;
                 } else {
                   console.error(
                     "Messenger send failed:",
                     sendRes.status,
                     (await sendRes.text()).slice(0, 300)
                   );
+                  return false;
                 }
               } catch (err) {
                 console.error("Messenger send error:", err?.message || err);
+                return false;
               }
             };
 
@@ -232,8 +293,13 @@ export default async function handler(req, res) {
               cfg.multiMessage !== false
                 ? splitReply(reply)
                 : [String(reply).replace(/\s*\|\s*/g, " ")];
-            if (chunks.length > 1) {
-              console.log("sending in", chunks.length, "bubbles |", senderId);
+            let queue = chunks;
+            if (cfg.ellipsisTease !== false && Math.random() < 0.15) {
+              queue = ["..."].concat(chunks);
+              console.log("ellipsis tease ->", senderId);
+            }
+            if (queue.length > 1) {
+              console.log("sending in", queue.length, "bubbles |", senderId);
             }
 
             const minD = Number.isFinite(cfg.minDelay) ? cfg.minDelay : 1200;
@@ -247,7 +313,8 @@ export default async function handler(req, res) {
               await sleep(remaining);
             }
 
-            for (let i = 0; i < chunks.length; i++) {
+            let sentAny = false;
+            for (let i = 0; i < queue.length; i++) {
               if (i > 0) {
                 const splitMs = Number.isFinite(cfg.splitDelay)
                   ? cfg.splitDelay
@@ -255,10 +322,20 @@ export default async function handler(req, res) {
                 if (splitMs > 0) await sleep(splitMs);
                 if (typingOn) await sendAction("typing_on");
               }
-              await sendText(chunks[i]);
+              const ok = await sendText(queue[i]);
+              sentAny = sentAny || ok;
             }
 
             if (typingOn) await sendAction("typing_off");
+
+            if (sentAny && cfg.memoryOn !== false) {
+              try {
+                history.push({ u: userText, a: chunks.join(" ") });
+                await saveHistory(senderId, history);
+              } catch (err) {
+                console.error("history save failed:", err?.message || err);
+              }
+            }
           }
         }
       }
