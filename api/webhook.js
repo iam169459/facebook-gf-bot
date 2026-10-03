@@ -68,7 +68,6 @@ export default async function handler(req, res) {
             loadHistory,
             saveHistory,
             appendInbox,
-            claimBurst,
             claimItems,
             scheduleBurst,
             confirmBurst,
@@ -115,32 +114,24 @@ export default async function handler(req, res) {
           let userText = parts.map((p) => p.text).join("\n");
           let reactionMid =
             (parts.filter((p) => !p.edit).pop() || {}).mid || null;
-          let processedMids = null;
+          let processedItems = null;
 
           // Burst grouping: collect rapid-fire parts, stop after silence window.
-          if (cfg.burstGrouping !== false) {
+          const idle = Number.isFinite(cfg.burstIdle) ? cfg.burstIdle : 6000;
+          if (cfg.burstGrouping !== false && idle > 0) {
             for (const p of parts) {
               await appendInbox(senderId, { text: p.text, mid: p.mid, e: p.edit });
             }
-            const idle = Number.isFinite(cfg.burstIdle) ? cfg.burstIdle : 6000;
 
-            if (idle > 0) {
-              const nonce = await scheduleBurst(senderId, idle);
-              if (!nonce) {
-                console.log("burst: waiting for scheduled waker ->", senderId);
-                return;
-              }
-              await sleep(idle);
-              if (!(await confirmBurst(senderId, nonce))) {
-                console.log("burst: another owner took over ->", senderId);
-                return;
-              }
-            } else {
-              const owner = await claimBurst(senderId);
-              if (!owner) {
-                console.log("burst: another reply in flight ->", senderId);
-                return;
-              }
+            const ticket = await scheduleBurst(senderId, idle);
+            if (!ticket) {
+              console.log("burst: waiting for scheduled waker ->", senderId);
+              return;
+            }
+            await sleep(idle);
+            if (!(await confirmBurst(senderId, ticket))) {
+              console.log("burst: another owner took over ->", senderId);
+              return;
             }
 
             const fresh = await claimItems(senderId);
@@ -154,7 +145,7 @@ export default async function handler(req, res) {
             userText = fresh.map((i) => i.text).join("\n");
             const lastReal = fresh.filter((i) => !i.e).pop();
             reactionMid = lastReal ? lastReal.mid : null;
-            processedMids = fresh.map((i) => i.mid);
+            processedItems = fresh;
           }
 
           const rdMin = Number.isFinite(cfg.readDelayMin) ? cfg.readDelayMin : 1000;
@@ -256,9 +247,9 @@ export default async function handler(req, res) {
           if (cfg.ignoreChance > 0 && Math.random() * 100 < cfg.ignoreChance) {
             console.log("left on read ->", senderId);
             if (cfg.markSeen !== false) await sendAction("mark_seen");
-            if (processedMids) {
+            if (processedItems) {
               try {
-                await finalizeInbox(senderId, processedMids);
+                await finalizeInbox(senderId, processedItems);
               } catch (err) {
                 console.error("inbox finalize failed:", err?.message || err);
               }
@@ -514,9 +505,9 @@ export default async function handler(req, res) {
             }
           }
 
-          if (processedMids && sentAny) {
+          if (processedItems && sentAny) {
             try {
-              await finalizeInbox(senderId, processedMids);
+              await finalizeInbox(senderId, processedItems);
             } catch (err) {
               console.error("inbox finalize failed:", err?.message || err);
             }
