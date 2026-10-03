@@ -1,3 +1,7 @@
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export default async function handler(req, res) {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
@@ -17,8 +21,14 @@ export default async function handler(req, res) {
 
   if (req.method === "POST") {
     const body = req.body;
+    if (!body || body.object !== "page") {
+      return res.status(200).send("EVENT_RECEIVED");
+    }
 
-    if (body && body.object === "page") {
+    // Ack immediately so Meta never retries while we simulate human delays.
+    res.status(200).send("EVENT_RECEIVED");
+
+    try {
       const { getConfig, buildSystemPrompt } = await import("../lib/config.js");
       const cfg = await getConfig();
 
@@ -28,13 +38,29 @@ export default async function handler(req, res) {
             const senderId = event.sender.id;
             const userText = event.message.text;
 
-            const fallback = cfg.fallbackReply || "Sorry baby, I'm a bit distracted right now 😘";
+            const rdMin = Number.isFinite(cfg.readDelayMin) ? cfg.readDelayMin : 1000;
+            const rdMax = Number.isFinite(cfg.readDelayMax)
+              ? Math.max(cfg.readDelayMax, rdMin)
+              : 4000;
+            const readWait =
+              cfg.readDelayMode === "fixed"
+                ? Number.isFinite(cfg.readDelay)
+                  ? cfg.readDelay
+                  : 2000
+                : Math.floor(Math.random() * (rdMax - rdMin + 1)) + rdMin;
+            if (readWait > 0) {
+              console.log("read delay:", readWait + "ms", "->", senderId);
+              await sleep(readWait);
+            }
+
+            const fallback =
+              cfg.fallbackReply || "Sorry baby, I'm a bit distracted right now 😘";
             let reply = fallback;
             let typingOn = false;
 
             const sendAction = async (action) => {
               try {
-                const res = await fetch(
+                const r = await fetch(
                   `https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
                   {
                     method: "POST",
@@ -46,8 +72,14 @@ export default async function handler(req, res) {
                     signal: AbortSignal.timeout(8000),
                   }
                 );
-                if (res.ok) console.log("action:", action, "->", senderId);
-                else console.error("action failed:", action, res.status, (await res.text()).slice(0, 200));
+                if (r.ok) console.log("action:", action, "->", senderId);
+                else
+                  console.error(
+                    "action failed:",
+                    action,
+                    r.status,
+                    (await r.text()).slice(0, 200)
+                  );
               } catch (err) {
                 console.error("action error:", action, err?.message || err);
               }
@@ -86,7 +118,11 @@ export default async function handler(req, res) {
 
               const data = await aiRes.json();
               if (!aiRes.ok) {
-                console.error("AI API error:", aiRes.status, JSON.stringify(data).slice(0, 300));
+                console.error(
+                  "AI API error:",
+                  aiRes.status,
+                  JSON.stringify(data).slice(0, 300)
+                );
               } else {
                 reply = data.choices?.[0]?.message?.content || fallback;
                 console.log("AI ok | model:", cfg.model, "| reply:", reply.slice(0, 80));
@@ -103,7 +139,7 @@ export default async function handler(req, res) {
             );
             const remaining = targetTyping - (Date.now() - startedAt);
             if (remaining > 0) {
-              await new Promise((r) => setTimeout(r, remaining));
+              await sleep(remaining);
             }
 
             try {
@@ -123,7 +159,11 @@ export default async function handler(req, res) {
               if (sendRes.ok) {
                 console.log("Sent reply to", senderId);
               } else {
-                console.error("Messenger send failed:", sendRes.status, (await sendRes.text()).slice(0, 300));
+                console.error(
+                  "Messenger send failed:",
+                  sendRes.status,
+                  (await sendRes.text()).slice(0, 300)
+                );
               }
             } catch (err) {
               console.error("Messenger send error:", err?.message || err);
@@ -133,9 +173,11 @@ export default async function handler(req, res) {
           }
         }
       }
+    } catch (err) {
+      console.error("Webhook processing failed:", err?.message || err);
     }
 
-    return res.status(200).send("EVENT_RECEIVED");
+    return;
   }
 
   return res.status(405).send("Method not allowed");
