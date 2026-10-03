@@ -1,4 +1,4 @@
-import { getConfig, saveConfig, sanitize } from "../lib/config.js";
+import { getConfig, saveConfig, sanitize, currentMood } from "../lib/config.js";
 
 function isAuthorized(req) {
   const required = process.env.ADMIN_PASSWORD;
@@ -57,6 +57,7 @@ export default async function handler(req, res) {
         ADMIN_PASSWORD: Boolean(process.env.ADMIN_PASSWORD),
       },
       webhookPath: "/api/webhook",
+      mood: currentMood(),
     });
   }
 

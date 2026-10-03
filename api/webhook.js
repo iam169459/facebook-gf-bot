@@ -4,6 +4,32 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function splitReply(text) {
+  const raw = String(text || "");
+  const chunks = [];
+  for (const part of raw.split(/\n+/)) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    if (trimmed.length <= 150) {
+      chunks.push(trimmed);
+      continue;
+    }
+    const sentences =
+      trimmed.match(/[^.!?…]+[.!?…]+["')\]]*\s*|[^.!?…]+$/g) || [trimmed];
+    let buf = "";
+    for (const s of sentences) {
+      if (buf && (buf + s).length > 150) {
+        chunks.push(buf.trim());
+        buf = s;
+      } else {
+        buf += s;
+      }
+    }
+    if (buf.trim()) chunks.push(buf.trim());
+  }
+  return chunks.length ? chunks : [raw];
+}
+
 export default async function handler(req, res) {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
@@ -34,8 +60,10 @@ export default async function handler(req, res) {
     waitUntil(
       (async () => {
         try {
-      const { getConfig, buildSystemPrompt } = await import("../lib/config.js");
-      const cfg = await getConfig();
+          const { getConfig, buildSystemPrompt, dhakaHour } = await import(
+            "../lib/config.js"
+          );
+          const cfg = await getConfig();
 
       for (const entry of body.entry || []) {
         for (const event of entry.messaging || []) {
@@ -56,6 +84,14 @@ export default async function handler(req, res) {
             if (readWait > 0) {
               console.log("read delay:", readWait + "ms", "->", senderId);
               await sleep(readWait);
+            }
+
+            if (cfg.moodAware !== false && (dhakaHour() >= 23 || dhakaHour() < 6)) {
+              const extra = Math.floor(Math.random() * 4000);
+              if (extra > 0) {
+                console.log("late-night slow-down:", extra + "ms", "->", senderId);
+                await sleep(extra);
+              }
             }
 
             const fallback =
@@ -136,6 +172,41 @@ export default async function handler(req, res) {
               console.error("AI failed:", err?.name || "Error", err?.message || err);
             }
 
+            const sendText = async (text) => {
+              try {
+                const sendRes = await fetch(
+                  `https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      recipient: { id: senderId },
+                      messaging_type: "RESPONSE",
+                      message: { text },
+                    }),
+                    signal: AbortSignal.timeout(15000),
+                  }
+                );
+                if (sendRes.ok) {
+                  console.log("Sent reply to", senderId, "|", text.slice(0, 60));
+                } else {
+                  console.error(
+                    "Messenger send failed:",
+                    sendRes.status,
+                    (await sendRes.text()).slice(0, 300)
+                  );
+                }
+              } catch (err) {
+                console.error("Messenger send error:", err?.message || err);
+              }
+            };
+
+            const chunks =
+              cfg.multiMessage !== false ? splitReply(reply) : [reply];
+            if (chunks.length > 1) {
+              console.log("sending in", chunks.length, "bubbles |", senderId);
+            }
+
             const minD = Number.isFinite(cfg.minDelay) ? cfg.minDelay : 1200;
             const maxD = Number.isFinite(cfg.maxDelay) ? cfg.maxDelay : 5000;
             const targetTyping = Math.min(
@@ -147,31 +218,15 @@ export default async function handler(req, res) {
               await sleep(remaining);
             }
 
-            try {
-              const sendRes = await fetch(
-                `https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    recipient: { id: senderId },
-                    messaging_type: "RESPONSE",
-                    message: { text: reply },
-                  }),
-                  signal: AbortSignal.timeout(15000),
-                }
-              );
-              if (sendRes.ok) {
-                console.log("Sent reply to", senderId);
-              } else {
-                console.error(
-                  "Messenger send failed:",
-                  sendRes.status,
-                  (await sendRes.text()).slice(0, 300)
-                );
+            for (let i = 0; i < chunks.length; i++) {
+              if (i > 0) {
+                const splitMs = Number.isFinite(cfg.splitDelay)
+                  ? cfg.splitDelay
+                  : 1500;
+                if (splitMs > 0) await sleep(splitMs);
+                if (typingOn) await sendAction("typing_on");
               }
-            } catch (err) {
-              console.error("Messenger send error:", err?.message || err);
+              await sendText(chunks[i]);
             }
 
             if (typingOn) await sendAction("typing_off");
