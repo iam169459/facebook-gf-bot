@@ -28,6 +28,9 @@ export default async function handler(req, res) {
             const senderId = event.sender.id;
             const userText = event.message.text;
 
+            const FALLBACK = "Sorry baby, I'm a bit distracted right now 😘";
+            let reply = FALLBACK;
+
             try {
               const aiRes = await fetch(
                 "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -46,15 +49,23 @@ export default async function handler(req, res) {
                     max_tokens: cfg.maxTokens,
                     temperature: cfg.temperature,
                   }),
+                  signal: AbortSignal.timeout(25000),
                 }
               );
 
               const data = await aiRes.json();
-              const reply =
-                data.choices?.[0]?.message?.content ||
-                "Sorry baby, I'm a bit distracted right now 😘";
+              if (!aiRes.ok) {
+                console.error("AI API error:", aiRes.status, JSON.stringify(data).slice(0, 300));
+              } else {
+                reply = data.choices?.[0]?.message?.content || FALLBACK;
+                console.log("AI ok | model:", cfg.model, "| reply:", reply.slice(0, 80));
+              }
+            } catch (err) {
+              console.error("AI failed:", err?.name || "Error", err?.message || err);
+            }
 
-              await fetch(
+            try {
+              const sendRes = await fetch(
                 `https://graph.facebook.com/v21.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`,
                 {
                   method: "POST",
@@ -64,10 +75,16 @@ export default async function handler(req, res) {
                     messaging_type: "RESPONSE",
                     message: { text: reply },
                   }),
+                  signal: AbortSignal.timeout(15000),
                 }
               );
+              if (sendRes.ok) {
+                console.log("Sent reply to", senderId);
+              } else {
+                console.error("Messenger send failed:", sendRes.status, (await sendRes.text()).slice(0, 300));
+              }
             } catch (err) {
-              console.error("Error:", err);
+              console.error("Messenger send error:", err?.message || err);
             }
           }
         }

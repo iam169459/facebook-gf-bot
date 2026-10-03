@@ -30,6 +30,7 @@ async function callNvidia(cfg, userText) {
       max_tokens: cfg.maxTokens,
       temperature: cfg.temperature,
     }),
+    signal: AbortSignal.timeout(25000),
   });
 
   const data = await res.json();
