@@ -61,6 +61,7 @@ export default async function handler(req, res) {
         ADMIN_PASSWORD: Boolean(process.env.ADMIN_PASSWORD),
       },
       webhookPath: "/api/webhook",
+      verifyToken: process.env.VERIFY_TOKEN || "",
       mood: currentMood(settings),
     });
   }
