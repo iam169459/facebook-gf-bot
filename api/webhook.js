@@ -63,10 +63,13 @@ export default async function handler(req, res) {
           const {
             getConfig,
             buildSystemPrompt,
-            dhakaHour,
+            isAsleep,
+            gapHint,
             sentimentHint,
             loadHistory,
             saveHistory,
+            loadLast,
+            saveLast,
             appendInbox,
             claimItems,
             scheduleBurst,
@@ -148,6 +151,25 @@ export default async function handler(req, res) {
             processedItems = fresh;
           }
 
+          const asleep = isAsleep(cfg);
+          let gapMs = 0;
+          try {
+            const prevLast = await loadLast(senderId);
+            if (prevLast > 0) gapMs = Math.max(0, Date.now() - prevLast);
+            await saveLast(senderId, Date.now());
+          } catch (err) {
+            console.error("lastAt failed:", err?.message || err);
+          }
+          const lateHint = gapHint(gapMs, cfg, asleep);
+          if (lateHint) {
+            console.log(
+              "late reply detected:",
+              Math.round(gapMs / 60000) + "min",
+              "->",
+              senderId
+            );
+          }
+
           const rdMin = Number.isFinite(cfg.readDelayMin) ? cfg.readDelayMin : 1000;
           const rdMax = Number.isFinite(cfg.readDelayMax)
             ? Math.max(cfg.readDelayMax, rdMin)
@@ -196,10 +218,10 @@ export default async function handler(req, res) {
             }
           }
 
-          if (cfg.moodAware !== false && (dhakaHour() >= 23 || dhakaHour() < 6)) {
+          if (cfg.moodAware !== false && asleep) {
             const extra = Math.floor(Math.random() * 4000);
             if (extra > 0) {
-              console.log("late-night slow-down:", extra + "ms", "->", senderId);
+              console.log("night slow-down:", extra + "ms", "->", senderId);
               await sleep(extra);
             }
           }
@@ -244,8 +266,17 @@ export default async function handler(req, res) {
             }
           };
 
-          if (cfg.ignoreChance > 0 && Math.random() * 100 < cfg.ignoreChance) {
-            console.log("left on read ->", senderId);
+          let ignorePct = Number.isFinite(cfg.ignoreChance) ? cfg.ignoreChance : 0;
+          if (asleep) {
+            ignorePct += Number.isFinite(cfg.sleepIgnore) ? cfg.sleepIgnore : 0;
+          }
+          if (ignorePct > 70) ignorePct = 70;
+          if (ignorePct > 0 && Math.random() * 100 < ignorePct) {
+            console.log(
+              asleep ? "sleeping — left on read" : "left on read",
+              "->",
+              senderId
+            );
             if (cfg.markSeen !== false) await sendAction("mark_seen");
             if (processedItems) {
               try {
@@ -282,10 +313,11 @@ export default async function handler(req, res) {
             const basePrompt = buildSystemPrompt(cfg);
             const sysPrompt = fb ? basePrompt + "\n\n" + fb : basePrompt;
             const hint = sentimentHint(userText);
+            const extra = [hint, lateHint].filter(Boolean).join("\n");
             const messages = [
               {
                 role: "system",
-                content: hint ? sysPrompt + "\n" + hint : sysPrompt,
+                content: extra ? sysPrompt + "\n" + extra : sysPrompt,
               },
             ];
             for (const h of history) {
