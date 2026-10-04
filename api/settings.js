@@ -1,4 +1,6 @@
 import { getConfig, saveConfig, sanitize, currentMood } from "../lib/config.js";
+import { log } from "../lib/logger.js";
+import { waitUntil } from "@vercel/functions";
 
 function isAuthorized(req) {
   const required = process.env.ADMIN_PASSWORD;
@@ -59,16 +61,17 @@ export default async function handler(req, res) {
         ADMIN_PASSWORD: Boolean(process.env.ADMIN_PASSWORD),
       },
       webhookPath: "/api/webhook",
-      mood: currentMood(cfg),
+      mood: currentMood(settings),
     });
   }
 
   if (req.method === "PUT") {
     try {
       const settings = await saveConfig((req.body && req.body.settings) || {});
+      waitUntil(log("info", "settings saved from dashboard"));
       return res.status(200).json({ ok: true, settings });
     } catch (err) {
-      console.error("Save failed:", err);
+      log("error", "Save failed:", err);
       return res.status(500).json({ error: err.message });
     }
   }
@@ -82,16 +85,17 @@ export default async function handler(req, res) {
         const reply = await callNvidia(cfg, message);
         return res.status(200).json({ ok: true, reply });
       } catch (err) {
-        console.error("Test failed:", err);
+        log("error","Test failed:", err);
         return res.status(500).json({ error: err.message });
       }
     }
     if (action === "reset") {
       try {
         const settings = await saveConfig({});
+        waitUntil(log("warn", "settings reset to defaults"));
         return res.status(200).json({ ok: true, settings });
       } catch (err) {
-        console.error("Reset failed:", err);
+        log("error","Reset failed:", err);
         return res.status(500).json({ error: err.message });
       }
     }

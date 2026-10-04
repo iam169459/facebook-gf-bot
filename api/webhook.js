@@ -1,4 +1,5 @@
 import { waitUntil } from "@vercel/functions";
+import { log } from "../lib/logger.js";
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
     const challenge = req.query["hub.challenge"];
 
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
-      console.log("Webhook verified");
+      log("info","Webhook verified");
       return res.status(200).send(challenge);
     }
     return res.status(403).send("Forbidden");
@@ -128,22 +129,22 @@ export default async function handler(req, res) {
 
             const ticket = await scheduleBurst(senderId, idle);
             if (!ticket) {
-              console.log("burst: waiting for scheduled waker ->", senderId);
+              log("info","burst: waiting for scheduled waker ->", senderId);
               return;
             }
             await sleep(idle);
             if (!(await confirmBurst(senderId, ticket))) {
-              console.log("burst: another owner took over ->", senderId);
+              log("info","burst: another owner took over ->", senderId);
               return;
             }
 
             const fresh = await claimItems(senderId);
             if (!fresh.length) {
-              console.log("burst: already handled ->", senderId);
+              log("info","burst: already handled ->", senderId);
               return;
             }
             if (fresh.length > 1) {
-              console.log("burst grouped", fresh.length, "parts |", senderId);
+              log("info","burst grouped", fresh.length, "parts |", senderId);
             }
             userText = fresh.map((i) => i.text).join("\n");
             const lastReal = fresh.filter((i) => !i.e).pop();
@@ -158,11 +159,11 @@ export default async function handler(req, res) {
             if (prevLast > 0) gapMs = Math.max(0, Date.now() - prevLast);
             await saveLast(senderId, Date.now());
           } catch (err) {
-            console.error("lastAt failed:", err?.message || err);
+            log("error","lastAt failed:", err?.message || err);
           }
           const lateHint = gapHint(gapMs, cfg, asleep);
           if (lateHint) {
-            console.log(
+            log("info",
               "late reply detected:",
               Math.round(gapMs / 60000) + "min",
               "->",
@@ -184,7 +185,7 @@ export default async function handler(req, res) {
             readWait += Math.min(userText.length * 25, 4000);
           }
           if (readWait > 0) {
-            console.log("read delay:", readWait + "ms", "->", senderId);
+            log("info","read delay:", readWait + "ms", "->", senderId);
             await sleep(readWait);
           }
 
@@ -206,29 +207,29 @@ export default async function handler(req, res) {
                   signal: AbortSignal.timeout(8000),
                 }
               );
-              if (rr.ok) console.log("reaction:", rtype, "->", senderId);
+              if (rr.ok) log("info","reaction:", rtype, "->", senderId);
               else
-                console.error(
+                log("error",
                   "reaction failed:",
                   rr.status,
                   (await rr.text()).slice(0, 200)
                 );
             } catch (err) {
-              console.error("reaction error:", err?.message || err);
+              log("error","reaction error:", err?.message || err);
             }
           }
 
           if (cfg.moodAware !== false && asleep) {
             const extra = Math.floor(Math.random() * 4000);
             if (extra > 0) {
-              console.log("night slow-down:", extra + "ms", "->", senderId);
+              log("info","night slow-down:", extra + "ms", "->", senderId);
               await sleep(extra);
             }
           }
 
           if (cfg.busyChance > 0 && Math.random() * 100 < cfg.busyChance) {
             const busyWait = 2000 + Math.floor(Math.random() * 6000);
-            console.log("busy/distraction:", busyWait + "ms", "->", senderId);
+            log("info","busy/distraction:", busyWait + "ms", "->", senderId);
             await sleep(busyWait);
           }
 
@@ -253,16 +254,16 @@ export default async function handler(req, res) {
                   signal: AbortSignal.timeout(8000),
                 }
               );
-              if (r.ok) console.log("action:", action, "->", senderId);
+              if (r.ok) log("info","action:", action, "->", senderId);
               else
-                console.error(
+                log("error",
                   "action failed:",
                   action,
                   r.status,
                   (await r.text()).slice(0, 200)
                 );
             } catch (err) {
-              console.error("action error:", action, err?.message || err);
+              log("error","action error:", action, err?.message || err);
             }
           };
 
@@ -272,7 +273,7 @@ export default async function handler(req, res) {
           }
           if (ignorePct > 70) ignorePct = 70;
           if (ignorePct > 0 && Math.random() * 100 < ignorePct) {
-            console.log(
+            log("info",
               asleep ? "sleeping — left on read" : "left on read",
               "->",
               senderId
@@ -282,7 +283,7 @@ export default async function handler(req, res) {
               try {
                 await finalizeInbox(senderId, processedItems);
               } catch (err) {
-                console.error("inbox finalize failed:", err?.message || err);
+                log("error","inbox finalize failed:", err?.message || err);
               }
             }
             return;
@@ -303,7 +304,7 @@ export default async function handler(req, res) {
             try {
               facts = await loadFacts(senderId);
             } catch (err) {
-              console.error("facts load failed:", err?.message || err);
+              log("error","facts load failed:", err?.message || err);
             }
           }
 
@@ -356,7 +357,7 @@ export default async function handler(req, res) {
 
             const first = await callAI(cfg.maxTokens);
             if (!first.ok) {
-              console.error(
+              log("error",
                 "AI API error:",
                 first.status,
                 JSON.stringify(first.data).slice(0, 300)
@@ -366,7 +367,7 @@ export default async function handler(req, res) {
                 first.data.choices?.[0]?.message?.content || ""
               ).trim();
               if (!content) {
-                console.log("AI returned empty content — retrying with more tokens");
+                log("info","AI returned empty content — retrying with more tokens");
                 try {
                   const second = await callAI(
                     Math.min(1000, Math.max(600, cfg.maxTokens))
@@ -377,12 +378,12 @@ export default async function handler(req, res) {
                     ).trim();
                   }
                 } catch (e) {
-                  console.error("AI retry failed:", e?.message || e);
+                  log("error","AI retry failed:", e?.message || e);
                 }
               }
               reply = content || fallback;
               aiOk = Boolean(content);
-              console.log(
+              log("info",
                 "AI ok | model:",
                 cfg.model,
                 "| took:",
@@ -392,7 +393,7 @@ export default async function handler(req, res) {
               );
             }
           } catch (err) {
-            console.error(
+            log("error",
               "AI failed:",
               err?.name || "Error",
               "| after:",
@@ -420,17 +421,17 @@ export default async function handler(req, res) {
                 }
               );
               if (sendRes.ok) {
-                console.log("Sent reply to", senderId, "|", text.slice(0, 60));
+                log("info","Sent reply to", senderId, "|", text.slice(0, 60));
                 return true;
               }
-              console.error(
+              log("error",
                 "Messenger send failed:",
                 sendRes.status,
                 (await sendRes.text()).slice(0, 300)
               );
               return false;
             } catch (err) {
-              console.error("Messenger send error:", err?.message || err);
+              log("error","Messenger send error:", err?.message || err);
               return false;
             }
           };
@@ -442,10 +443,10 @@ export default async function handler(req, res) {
           let queue = chunks;
           if (cfg.ellipsisTease !== false && Math.random() < 0.15) {
             queue = ["..."].concat(chunks);
-            console.log("ellipsis tease ->", senderId);
+            log("info","ellipsis tease ->", senderId);
           }
           if (queue.length > 1) {
-            console.log("sending in", queue.length, "bubbles |", senderId);
+            log("info","sending in", queue.length, "bubbles |", senderId);
           }
 
           const minD = Number.isFinite(cfg.minDelay) ? cfg.minDelay : 1200;
@@ -479,7 +480,7 @@ export default async function handler(req, res) {
               history.push({ u: userText, a: chunks.join(" ") });
               await saveHistory(senderId, history);
             } catch (err) {
-              console.error("history save failed:", err?.message || err);
+              log("error","history save failed:", err?.message || err);
             }
           }
 
@@ -514,7 +515,7 @@ export default async function handler(req, res) {
                 const newFacts = parseFacts(
                   exData.choices?.[0]?.message?.content || ""
                 );
-                console.log(
+                log("info",
                   "fact extraction:",
                   newFacts.length ? newFacts.length + " raw" : "none",
                   "|",
@@ -525,7 +526,7 @@ export default async function handler(req, res) {
                   const merged = mergeFacts(existing, newFacts);
                   if (merged.length !== existing.length) {
                     await saveFacts(senderId, merged);
-                    console.log(
+                    log("info",
                       "facts saved:",
                       merged.length - existing.length,
                       "new | total:",
@@ -536,10 +537,10 @@ export default async function handler(req, res) {
                   }
                 }
               } else {
-                console.error("fact extraction API:", exRes.status);
+                log("error","fact extraction API:", exRes.status);
               }
             } catch (err) {
-              console.error("fact extraction failed:", err?.message || err);
+              log("error","fact extraction failed:", err?.message || err);
             }
           }
 
@@ -547,11 +548,11 @@ export default async function handler(req, res) {
             try {
               await finalizeInbox(senderId, processedItems);
             } catch (err) {
-              console.error("inbox finalize failed:", err?.message || err);
+              log("error","inbox finalize failed:", err?.message || err);
             }
           }
         } catch (err) {
-          console.error("Webhook processing failed:", err?.message || err);
+          log("error","Webhook processing failed:", err?.message || err);
         }
       })()
     );
