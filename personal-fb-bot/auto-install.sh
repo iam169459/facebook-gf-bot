@@ -15,20 +15,54 @@
 # Requirements:
 #   A Debian/Ubuntu/RHEL/Arch linux server. Root or sudo access.
 #   Internet access.
+#
+# The script is self-locating: it finds the repository root automatically
+# whether you run it from the repo root, from inside personal-fb-bot/, or
+# pipe it from remote.
 
 set -euo pipefail
 
 # -----------------------------------------------------------
+# Locate the repository root
+# -----------------------------------------------------------
+# If we are inside the repo (personal-fb-bot/ exists in this directory),
+# use that as the repo root.
+if [[ -f "${PWD}/personal-fb-bot/package.json" ]]; then
+  REPO_ROOT="${PWD}"
+  echo "    Repo root detected: ${REPO_ROOT}"
+elif [[ -f "${PWD}/package.json" ]]; then
+  # We were given a cloned repo (personal-fb-bot/ at top level)
+  REPO_ROOT="${PWD}"
+  echo "    Repo root detected: ${REPO_ROOT}"
+else
+  # Otherwise, look for personal-fb-bot in the current directory or
+  # in the parent of the script's directory.
+  if [[ -f "${PWD}/personal-fb-bot/package.json" ]]; then
+    REPO_ROOT="${PWD}"
+  elif [[ -f "${PWD}/personal-fb-bot/package.json" ]]; then
+    REPO_ROOT="${PWD}"
+  else
+    # Fall back to PWD as the working directory
+    REPO_ROOT="${PWD}"
+    echo "    WARNING: personal-fb-bot/package.json not found in ${REPO_ROOT}."
+    echo "    Proceeding from ${REPO_ROOT} (most likely you ran"
+    echo "    this from inside the repository)."
+  fi
+fi
+
+# Resolve to absolute path
+REPO_ROOT="$(cd "${REPO_ROOT}" && pwd)"
+APP_DIR="${REPO_ROOT}"
+
+# -----------------------------------------------------------
 # Defaults
 # -----------------------------------------------------------
-APP_DIR="${PWD}"
-REPO_URL="https://github.com/iam169459/facebook-gf-bot.git"
+DB_PATH="${PERSONAL_FB_DB_PATH:-${REPO_ROOT}/personal-fb-bot/data/fb.db}"
 PORT="${PORT:-8787}"
 HOST="${HOST:-0.0.0.0}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-change-me-please-now}"
 NODE_ENV="${NODE_ENV:-production}"
 USER="${SUDO_USER:-$(whoami)}"
-DB_PATH="${PERSONAL_FB_DB_PATH:-${APP_DIR}/personal-fb-bot/data/fb.db}"
 LOG_FILE="/var/log/personal-fb-bot.log"
 
 # Check for root/sudo
@@ -71,10 +105,10 @@ run_sudo() {
 echo "============================================================"
 echo "  Personal FB Bot — auto installer"
 echo "============================================================"
-echo "WORKING DIRECTORY : ${APP_DIR}"
-echo "DB PATH          : ${DB_PATH}"
-echo "PORT             : ${PORT}"
-echo "ADMIN_TOKEN      : ${ADMIN_TOKEN}"
+echo "WORKING DIRECTORY : ${REPO_ROOT}"
+echo "DATA PATH         : ${DB_PATH}"
+echo "PORT              : ${PORT}"
+echo "ADMIN_TOKEN       : ${ADMIN_TOKEN}"
 echo "============================================================"
 
 # -----------------------------------------------------------
@@ -131,11 +165,13 @@ fi
 # -----------------------------------------------------------
 echo ""
 echo "[3/6] Cloning/prepare repository..."
-if [[ ! -d "${APP_DIR}/personal-fb-bot" ]]; then
-  echo "    Cloning ${REPO_URL} into ${APP_DIR}..."
-  git clone --depth 1 "${REPO_URL}" "${APP_DIR}/personal-fb-bot"
+if [[ ! -f "${REPO_ROOT}/personal-fb-bot/package.json" ]]; then
+  echo "    Cloning ${REPO_URL} into ${REPO_ROOT}..."
+  git clone --depth 1 "https://github.com/iam169459/facebook-gf-bot.git" "${REPO_ROOT}/personal-fb-bot"
 fi
-cd "${APP_DIR}/personal-fb-bot"
+
+# Step into the app directory
+cd "${REPO_ROOT}/personal-fb-bot"
 
 # -----------------------------------------------------------
 # Step 3: Install npm dependencies
@@ -143,7 +179,7 @@ cd "${APP_DIR}/personal-fb-bot"
 echo ""
 echo "[4/6] Installing npm dependencies..."
 if [[ ! -f package.json ]]; then
-  echo "    Error: no package.json in ${APP_DIR}/personal-fb-bot"
+  echo "    Error: no package.json in ${REPO_ROOT}/personal-fb-bot"
   exit 1
 fi
 npm install --no-audit --no-fund
@@ -166,11 +202,11 @@ echo "    Chromium installed."
 # -----------------------------------------------------------
 echo ""
 echo "[6/6] Creating data directory and .env..."
-mkdir -p "${APP_DIR}/personal-fb-bot/data"
-mkdir -p "${APP_DIR}/.env.d"
+mkdir -p "${REPO_ROOT}/personal-fb-bot/data"
+mkdir -p "${REPO_ROOT}/.env.d"
 
-if [[ ! -f "${APP_DIR}/personal-fb-bot/.env" ]]; then
-  cat > "${APP_DIR}/personal-fb-bot/.env" <<EOF
+if [[ ! -f "${REPO_ROOT}/personal-fb-bot/.env" ]]; then
+  cat > "${REPO_ROOT}/personal-fb-bot/.env" <<EOF
 PORT=${PORT}
 HOST=${HOST}
 ADMIN_TOKEN=${ADMIN_TOKEN}
@@ -182,7 +218,7 @@ PERSONAL_FB_DB_PATH=${DB_PATH}
 PERSONAL_FB_DRIVER=chromium
 PERSONAL_FB_HEADLESS=1
 EOF
-  echo "    Created ${APP_DIR}/personal-fb-bot/.env"
+  echo "    Created ${REPO_ROOT}/personal-fb-bot/.env"
 fi
 
 # -----------------------------------------------------------
@@ -200,7 +236,7 @@ After=network.target
 
 [Service]
 User=${USER}
-WorkingDirectory=${APP_DIR}/personal-fb-bot
+WorkingDirectory=${REPO_ROOT}/personal-fb-bot
 ExecStart=/usr/bin/npm start
 Environment=NODE_ENV=production
 Environment=ADMIN_TOKEN=${ADMIN_TOKEN}
