@@ -97,8 +97,8 @@ textarea.input { min-height:64px; resize:vertical; }
   <!-- Login view -->
   <div id="loginView">
     <div class="wrap" style="max-width:480px;margin:0 auto;">
-      <h2>Connect your personal Facebook account</h2>
-      <p class="sub">This app runs on your own server. Log in to your real personal Facebook account here so the dashboard can read, send, react, and edit messages as you, without a page token.</p>
+      <h2>Personal FB — connect your account</h2>
+      <p class="sub">This app runs on your own server. Log in to your real personal Facebook account here so the dashboard can read, send, react, and edit messages as you, without a Page token.</p>
       <div class="fb-login">
         <div class="row">
           <div class="field" style="flex:1">
@@ -324,18 +324,19 @@ textarea.input { min-height:64px; resize:vertical; }
   // ----- Login -----
   async function doLogin(){
     const email = document.getElementById("loginEmail").value.trim();
-    const pass = document.getElementById("loginPass").value;
+    const accountName = email || document.getElementById("loginPass").value || "Personal FB Account";
     const btn = document.getElementById("loginBtn");
     btn.disabled = true; btn.textContent = "Connecting...";
     const spin = document.getElementById("loginSpin"); spin.style.display="inline-block";
     try {
-      const j = await api("/api/login", { method:"POST", body:{ email, pass } });
+      // /api/login: email locates/creates the account; pass is unused.
+      const j = await api("/api/login", { method:"POST", body:{ email, accountName } });
       localStorage.setItem("pfb_token", j.account.id);
       localStorage.setItem("pfb_accounts", JSON.stringify([...ACCOUNTS, j.account]));
       state.account = j.account;
       await refreshAccount();
       showApp();
-      toast("Connected as " + j.account.name);
+      toast("Connected as " + (j.account.name || "Personal FB"));
       await loadInbox();
     } catch(e){
       toast(e.message, true);
@@ -346,10 +347,12 @@ textarea.input { min-height:64px; resize:vertical; }
   }
 
   document.getElementById("loginBtn").addEventListener("click", doLogin);
-  document.getElementById("loginPass").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
   document.getElementById("browseBtn").addEventListener("click", async ()=>{
     try {
-      const r = await api("/api/connect", { method:"POST", body:{ email: document.getElementById("loginEmail").value.trim(), pass: document.getElementById("loginPass").value } });
+      // /api/connect: email + pass are optional; the browser drives FB login.
+      const email = document.getElementById("loginEmail").value.trim();
+      const pass = document.getElementById("loginPass").value;
+      const r = await api("/api/connect", { method:"POST", body:{ email, pass } });
       localStorage.setItem("pfb_token", r.account.id);
       localStorage.setItem("pfb_accounts", JSON.stringify([...ACCOUNTS, r.account]));
       state.account = r.account;
@@ -390,9 +393,11 @@ textarea.input { min-height:64px; resize:vertical; }
       document.getElementById("accName").textContent = j.account.name || "—";
       document.getElementById("accEmail").textContent = j.account.email || "personal account";
       const av = document.getElementById("accAvatar");
-      if (j.account.avatar_url) { av.innerHTML = `<img src="${esc(j.account.avatar_url)}" alt="" />`; }
+      const profileUrl = j.account.profile_url || j.account.avatar_url || null;
+      if (profileUrl) { av.innerHTML = `<img src="${esc(profileUrl)}" alt="" />`; }
       else { av.textContent = (j.account.name||"").charAt(0).toUpperCase(); }
-      document.getElementById("sessList").innerHTML = (j.account.sessions || []).map(s => `<div class="tag"><span class="small">session</span> ${esc(s.id)}</div>`).join("") || '<div class="md">none</div>';
+      const sessions = (j.account.sessions || []).filter(Boolean);
+      document.getElementById("sessList").innerHTML = sessions.map(s => `<div class="tag"><span class="small">session</span> ${esc(s.id)}</div>`).join("") || '<div class="md">no active sessions</div>';
     } catch(e){ toast(e.message, true); }
   }
 
@@ -406,9 +411,13 @@ textarea.input { min-height:64px; resize:vertical; }
     } catch(e){ toast(e.message, true); }
   });
   document.getElementById("reconnectBtn").addEventListener("click", async ()=>{
-    const email = prompt("E-mail (optional)"), pass = prompt("Password (optional, leave blank for browser profile)");
-    try { const j = await api("/api/connect", { method:"POST", body:{ email, pass, profileUrl: state.account.profile_url, avatarUrl: state.account.avatar_url } }); toast("Reconnected as " + j.account.name); await refreshAccount(); await loadInbox(); }
-    catch(e){ toast(e.message, true); }
+    const email = prompt("E-mail (optional)") || "";
+    const pass = prompt("Password (optional, leave blank for browser profile)") || "";
+    try {
+      const backend = state.account.profile_url || state.account.avatar_url || null;
+      const j = await api("/api/connect", { method:"POST", body:{ email, pass, profileUrl: backend } });
+      toast("Reconnected as " + j.account.name); await refreshAccount(); await loadInbox();
+    } catch(e){ toast(e.message, true); }
   });
 
   // ----- Inbox -----
@@ -488,12 +497,12 @@ textarea.input { min-height:64px; resize:vertical; }
   document.getElementById("replyBtn").addEventListener("click", async ()=>{
     const last = state.messages.length ? state.messages[0] : null;
     if (!last) { toast("No message to reply to"); return; }
-    const recipient = last.sender_id || last.recipient || last.thread_id || prompt("Recipient (optional)", last.sender_id||"");
+    const recipient = last.sender_id || last.recipient || prompt("Recipient (optional)", "");
     const text = prompt("Reply text", last.text||"");
     if (!text) return;
     try {
-      await api("/api/messages", { method:"POST", body:{ recipient, text, threadId: last.id } });
-      toast("Queued reply as " + recipient);
+      await api("/api/messages", { method:"POST", body:{ recipient, text } });
+      toast("Queued reply to " + recipient);
       await loadInbox();
     } catch(e){ toast(e.message, true); }
   });
@@ -516,7 +525,7 @@ textarea.input { min-height:64px; resize:vertical; }
     try {
       const res = await fetch("/api/settings", {
         method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"test", message: msgEl.textContent, settings:{ model, provider, aiAccount: token, endpoint: endpoint || undefined, aiAccountName: "personal-ai" } })
+        body: JSON.stringify({ action:"test", message: msgEl.textContent, settings:{ model, provider, aiAccount: token, endpoint: endpoint || undefined } })
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || "AI call failed");
