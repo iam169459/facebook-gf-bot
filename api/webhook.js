@@ -34,7 +34,6 @@ export function splitReply(text) {
 export default async function handler(req, res) {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-  const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY;
 
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
@@ -334,23 +333,26 @@ export default async function handler(req, res) {
             }
             messages.push({ role: "user", content: userText });
             const callAI = async (maxTokens) => {
-              const res = await fetch(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${NVIDIA_API_KEY}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    model: cfg.model,
-                    messages,
-                    max_tokens: maxTokens,
-                    temperature: cfg.temperature,
-                  }),
-                  signal: AbortSignal.timeout((cfg.aiTimeout || 30) * 1000),
-                }
-              );
+              const key = cfg.aiAccount || process.env.CI_AI_ACCOUNT || process.env.AI_ACCOUNT;
+              const url = cfg.endpoint ||
+                (cfg.provider === "anthropic"
+                  ? "https://api.anthropic.com/v1/messages"
+                  : "https://integrate.api.nvidia.com/v1/chat/completions");
+              const headers =
+                cfg.provider === "anthropic"
+                  ? { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" }
+                  : { Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+              const res = await fetch(url, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  model: cfg.model,
+                  messages,
+                  max_tokens: maxTokens,
+                  temperature: cfg.temperature,
+                }),
+                signal: AbortSignal.timeout((cfg.aiTimeout || 30) * 1000),
+              });
               const d = await res.json();
               return { ok: res.ok, status: res.status, data: d };
             };
@@ -487,11 +489,11 @@ export default async function handler(req, res) {
           if (cfg.longTermMemory !== false && (sentAny || aiOk)) {
             try {
               const exRes = await fetch(
-                "https://integrate.api.nvidia.com/v1/chat/completions",
+                cfg.endpoint || "https://integrate.api.nvidia.com/v1/chat/completions",
                 {
                   method: "POST",
                   headers: {
-                    Authorization: `Bearer ${NVIDIA_API_KEY}`,
+                    Authorization: `Bearer ${cfg.aiAccount || process.env.CI_AI_ACCOUNT || process.env.AI_ACCOUNT}`,
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({

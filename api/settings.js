@@ -12,18 +12,25 @@ function isAuthorized(req) {
   return given === required;
 }
 
-async function callNvidia(cfg, userText) {
-  const key = process.env.NVIDIA_API_KEY;
-  if (!key) throw new Error("NVIDIA_API_KEY is not set");
+async function callAI(cfg, userText) {
+  const key = cfg.aiAccount || process.env.CI_AI_ACCOUNT || process.env.AI_ACCOUNT;
+  if (!key) throw new Error("AI account is not configured - add it in the settings tab");
+  let url = cfg.endpoint;
+  if (!url) {
+    if (cfg.provider === "openai") url = "https://api.openai.com/v1/chat/completions";
+    else if (cfg.provider === "anthropic") url = "https://api.anthropic.com/v1/messages";
+    else url = "https://integrate.api.nvidia.com/v1/chat/completions";
+  }
 
   const { buildSystemPrompt, sentimentHint } = await import("../lib/config.js");
   const sys = buildSystemPrompt(cfg);
   const hint = sentimentHint(userText);
-  const res = await fetch("https://integrate.api.nvidia.com/v1/chat/completions", {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
+      ...(cfg.provider === "anthropic"
+        ? { "Content-Type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" }
+        : { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }),
     },
     body: JSON.stringify({
       model: cfg.model,
@@ -39,7 +46,8 @@ async function callNvidia(cfg, userText) {
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error?.message || `NVIDIA API error ${res.status}`);
+    const msg = data?.error?.message || `AI API error ${res.status}`;
+    throw new Error(msg);
   }
   return data.choices?.[0]?.message?.content || "";
 }
@@ -57,6 +65,7 @@ export default async function handler(req, res) {
         VERIFY_TOKEN: Boolean(process.env.VERIFY_TOKEN),
         PAGE_ACCESS_TOKEN: Boolean(process.env.PAGE_ACCESS_TOKEN),
         NVIDIA_API_KEY: Boolean(process.env.NVIDIA_API_KEY),
+        AI_ACCOUNT: Boolean(process.env.AI_ACCOUNT || process.env.CI_AI_ACCOUNT),
         BLOB_READ_WRITE_TOKEN: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
         ADMIN_PASSWORD: Boolean(process.env.ADMIN_PASSWORD),
       },
@@ -83,7 +92,7 @@ export default async function handler(req, res) {
       try {
         const cfg = sanitize((req.body && req.body.settings) || (await getConfig()));
         const message = String((req.body && req.body.message) || "Hey").slice(0, 500);
-        const reply = await callNvidia(cfg, message);
+        const reply = await callAI(cfg, message);
         return res.status(200).json({ ok: true, reply });
       } catch (err) {
         log("error","Test failed:", err);

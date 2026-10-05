@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Personal FB — Self-Hosted</title>
+<style>
+:root {
+  --bg: #0e1016;
+  --panel: #161a24;
+  --panel2: #1f2533;
+  --line: #2a3244;
+  --text: #e8ecf4;
+  --muted: #8b95a8;
+  --accent: #58a6ff;
+  --accent2: #ff7b72;
+  --ok: #3fb950;
+  --warn: #d29922;
+  --bad: #f85149;
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+a { color: var(--accent); }
+header { background: linear-gradient(180deg, var(--panel2), var(--panel)); border-bottom: 1px solid var(--line); }
+.topbar { max-width: 1200px; margin: 0 auto; padding: 14px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.brand { font-weight: 700; font-size: 16px; }
+.brand span { color: var(--accent2); }
+.nav { display:flex; gap:8px; margin-left: 8px; flex-wrap: wrap; }
+.nav a { padding:8px 12px; border-radius:8px; color: var(--muted); text-decoration:none; font-size:13.5px; }
+.nav a:hover { background: rgba(255,255,255,.04); color: var(--text); }
+.nav a.active { background: rgba(88,166,255,.14); color: var(--accent); }
+.userbox { margin-left:auto; display:flex; align-items:center; gap:10px; }
+.avatar { width:34px; height:34px; border-radius:50%; background:#33415c; display:flex; align-items:center; justify-content:center; font-weight:600; overflow:hidden; }
+.avatar img { width:100%; height:100%; object-fit:cover; }
+.btn { padding:9px 14px; border-radius:9px; border:1px solid var(--line); background:#0f1420; color:var(--text); font-size:13.5px; cursor:pointer; font-weight:600; transition: background .12s; }
+.btn:hover { background:#1a2130; }
+.btn.primary { background: linear-gradient(135deg, #58a6ff, #79c0ff); border-color:#58a6ff; color:#0f1420; }
+.btn.primary:hover { background: linear-gradient(135deg, #6bb0ff, #8fc8ff); }
+.btn.danger { border-color:#e0a5a0; color:#f85149; }
+.btn.danger:hover { background:#2a1f1e; }
+.btn.Success { border-color:#3fb950; color:#3fb950; }
+.btn.Success:hover { background:#1e2a1e; }
+.btn.ghost { background:transparent; }
+.btn.sm { padding:5px 9px; font-size:12px; }
+.pane { max-width: 1200px; margin: 0 auto; padding: 24px 20px 80px; }
+.wrap { background:#0f1420; border:1px solid var(--line); border-radius:14px; padding:20px; margin-bottom:18px; }
+.wrap h2 { font-size:18px; margin:0 0 6px; }
+.wrap .sub { color:var(--muted); font-size:13px; margin-bottom:14px; }
+.grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:14px; }
+.card { background:#0f1420; border:1px solid var(--line); border-radius:12px; padding:16px; }
+.card h3 { margin:0 0 10px; font-size:14px; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.row>div { flex:1 1 200px; }
+.md { color:var(--muted); font-size:12.5px; }
+.button-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+.section-title { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); margin: 22px 0 10px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+.empty { color:var(--muted); font-size:13px; padding:14px 0; }
+.tag { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11.5px; font-weight:600; background:#0f1420; border:1px solid var(--line); color:var(--muted); margin-right:6px; }
+.tag.ok { color:var(--ok); border-color:#2a5a3a; background:#0e2016; }
+.tag.err { color:var(--bad); border-color:#6b2d2a; background:#2a100e; }
+.tag.act { color:var(--accent); border-color:#2a4a6a; background:#0e1a2a; }
+.small { font-size:12px; color:var(--muted); }
+.badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-size:12px; background:#0f1420; border:1px solid var(--line); color:var(--muted); }
+.badge.ok { border-color:#2a5a3a; color:var(--ok); background:#0e2016; }
+.badge.err { border-color:#6b2d2a; color:var(--bad); background:#2a100e; }
+.badge.act { border-color:#2a4a6a; color:var(--accent); background:#0e1a2a; }
+.loading { color:var(--muted); font-size:13px; }
+.message { padding:10px 12px; border-radius:10px; margin:8px 0; border:1px solid var(--line); background:#0f1420; }
+.message.user { border-color:#2a5a3a; background:#0e2016; }
+.message.ai { border-color:#566b8a; background:#0e1420; }
+.message .msg-text { font-size:13.5px; line-height:1.5; word-break:break-word; }
+.message .msg-time { font-size:11px; color:var(--muted); margin-top:4px; }
+.fb-login { display:flex; gap:12px; align-items:center; }
+.fb-login .btn { cursor: pointer; }
+.typing { color:var(--muted); font-style:italic; }
+pre.log { background:#0a0d15; border:1px solid var(--line); border-radius:8px; padding:12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:11.5px; color:#9fb0c8; max-height:320px; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+.field { display:flex; flex-direction:column; gap:5px; }
+.field label { font-size:12.5px; color:var(--muted); }
+.input, .select { background:#0f1420; border:1px solid var(--line); color:var(--text); border-radius:8px; padding:9px 11px; font-size:13.5px; font-family:inherit; outline:none; }
+.input:focus, .select:focus { border-color:var(--accent); }
+textarea.input { min-height:64px; resize:vertical; }
+.status-line { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+.spin { width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <div class="topbar">
+    <div class="brand">Personal FB <span>Bot</span></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="userbox" id="userbox"></div>
+  </div>
+</header>
+
+<main class="pane">
+  <!-- Login view -->
+  <div id="loginView">
+    <div class="wrap" style="max-width:480px;margin:0 auto;">
+      <h2>Connect your personal Facebook account</h2>
+      <p class="sub">This app runs on your own server. Log in to your real personal Facebook account here so the dashboard can read, send, react, and edit messages as you, without a page token.</p>
+      <div class="fb-login">
+        <div class="row">
+          <div class="field" style="flex:1">
+            <label style="font-size:12px;color:var(--muted)">E-mail (optional)</label>
+            <input class="input" id="loginEmail" type="email" placeholder="you@example.com" />
+          </div>
+          <div class="field" style="flex:1">
+            <label style="font-size:12px;color:var(--muted)">Password (optional — leave blank if using browser profile)</label>
+            <input class="input" id="loginPass" type="password" placeholder="••••••••" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="loginBtn">Connect &amp; Log In</button>
+          <button class="btn ghost" id="browseBtn" style="margin-left:0">Open Browser to Log In</button>
+        </div>
+        <p class="md" style="margin-top:10px"><span class="spin" id="loginSpin" style="display:none"></span>
+          <span id="loginMsg">Press connect to link your account.</span></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard view (hidden until logged in) -->
+  <div id="appView" class="hidden">
+    <div class="status-line" id="statusLine"></div>
+
+    <nav>
+      <button class="nav" data-tab="inbox">📥 Inbox</button>
+      <button class="nav" data-tab="threads">Threads</button>
+      <button class="nav" data-tab="chat">Send</button>
+      <button class="nav" data-tab="msgs">Messages</button>
+      <button class="nav" data-tab="account">Account</button>
+      <button class="nav" data-tab="ai">AI Helper</button>
+      <button class="nav" data-tab="logs">Logs</button>
+      <button class="btn ghost danger sm" id="logoutBtn">Disconnect</button>
+    </nav>
+
+    <!-- Inbox -->
+    <section class="pane" data-pane="inbox">
+      <div class="wrap">
+        <h2>Inbox</h2>
+        <p class="sub">Unread and recent messages from your Facebook friends.</p>
+        <div class="row" style="margin-bottom:12px">
+          <input class="input" id="inboxFilter" placeholder="Filter messages…" style="flex:1" />
+          <label class="badge act" id="inviteLabel" style="display:none"><span class="spin" style="display:none" id="inviteSpin"></span> <span id="inviteText">Paused</span></label>
+        </div>
+        <div id="inboxList"></div>
+      </div>
+    </section>
+
+    <!-- Threads -->
+    <section class="pane hidden" data-pane="threads">
+      <div class="wrap">
+        <h2>Conversations</h2>
+        <p class="sub">Pick a conversation to chat or read.</p>
+        <div class="grid" id="threadGrid"></div>
+      </div>
+    </section>
+
+    <!-- Send -->
+    <section class="pane hidden" data-pane="chat">
+      <div class="wrap">
+        <h2>Send a message</h2>
+        <p class="sub">Type a message to a recipient on your connected Facebook account.</p>
+        <div class="grid">
+          <div>
+            <h3>To</h3>
+            <div class="row">
+              <input class="input" id="chatRecipient" placeholder="Friend name or phone" style="flex:1" />
+            </div>
+          </div>
+          <div>
+            <h3>Message</h3>
+            <textarea class="input" id="chatMessage" placeholder="What do you want to say?"></textarea>
+          </div>
+        </div>
+        <div class="button-row">
+          <button class="btn primary" id="sendBtn">Send</button>
+          <button class="btn ghost" id="swipeBtn">Send With Thumb Swipe</button>
+          <button class="btn ghost" id="replyBtn">Reply to Last</button>
+        </div>
+        <div class="status-line" id="sendStatus"></div>
+      </div>
+    </section>
+
+    <!-- Messages list -->
+    <section class="pane hidden" data-pane="msgs">
+      <div class="wrap">
+        <h2>Message history</h2>
+        <p class="sub">All messages (yours and replies) stored for this account.</p>
+        <div class="row">
+          <input class="input" id="msgFilter" placeholder="Filter…" style="flex:1" />
+        </div>
+        <div id="msgList"></div>
+      </div>
+    </section>
+
+    <!-- Account -->
+    <section class="pane hidden" data-pane="account">
+      <div class="wrap">
+        <h2>Account</h2>
+        <p class="sub">Connected personal Facebook account details.</p>
+        <div class="grid">
+          <div class="card">
+            <h3>Profile</h3>
+            <div class="row">
+              <div class="avatar" id="accAvatar" style="width:64px;height:64px"></div>
+              <div style="flex:1"><div id="accName" style="font-weight:600"></div><div class="md" id="accEmail"></div></div>
+            </div>
+            <div class="status-line">
+              <button class="btn ghost sm" id="reconnectBtn">Reconnect</button>
+              <button class="btn ghost sm danger" id="disconnectBtn">Disconnect</button>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Active sessions</h3>
+            <div id="sessList"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI Helper -->
+    <section class="pane hidden" data-pane="ai">
+      <div class="wrap">
+        <h2>AI Helper</h2>
+        <p class="sub">AI replies help you answer faster — powered by your personal AI account from the old bot config.</p>
+        <div class="grid">
+          <div>
+            <h3>AI model</h3>
+            <div class="row">
+              <input class="input" id="aiModel" placeholder="e.g. gpt-4o-mini" style="flex:1" />
+            </div>
+          </div>
+          <div>
+            <h3>Provider</h3>
+            <select class="select" id="aiProvider">
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="nvidia">NVIDIA (default)</option>
+            </select>
+          </div>
+          <div>
+            <h3>Personal AI account token</h3>
+            <input class="input" id="aiAccount" type="password" placeholder="Paste your personal AI account token" />
+          </div>
+          <div>
+            <h3>AI endpoint (optional)</h3>
+            <input class="input" id="aiEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+          </div>
+        </div>
+        <div class="button-row">
+          <button class="btn primary" id="askAIBtn">Ask AI</button>
+          <button class="btn ghost" id="askAIThreadBtn">Ask AI about last message</button>
+        </div>
+        <div class="status-line" id="aiStatus"></div>
+        <div class="wrap" style="margin-top:14px">
+          <h3>AI reply</h3>
+          <div id="aiReply" class="md" style="min-height:40px;color:var(--muted)"></div>
+        </div>
+        <div class="status-line" id="aiReplyStatus"></div>
+      </div>
+    </section>
+
+    <!-- Logs -->
+    <section class="pane hidden" data-pane="logs">
+      <div class="wrap">
+        <h2>Automation logs</h2>
+        <p class="sub">Live log of the browser automation (login, messages, reactions, edits).</p>
+        <pre class="log" id="logBox">-- no logs yet --</pre>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+  const TOKEN = localStorage.getItem("pfb_token");
+  const ACCOUNTS = JSON.parse(localStorage.getItem("pfb_accounts") || "[]");
+  const state = { account: null, messages: [], logs: [], inbox: [], threads: [] };
+
+  const nav = document.getElementById("nav");
+  const paneMap = {
+    inbox: document.querySelector('[data-pane="inbox"]'),
+    threads: document.querySelector('[data-pane="threads"]'),
+    chat: document.querySelector('[data-pane="chat"]'),
+    msgs: document.querySelector('[data-pane="msgs"]'),
+    account: document.querySelector('[data-pane="account"]'),
+    ai: document.querySelector('[data-pane="ai"]'),
+    logs: document.querySelector('[data-pane="logs"]'),
+  };
+  const tabs = ["inbox","threads","chat","msgs","account","ai","logs"];
+
+  function signOut(){
+    fetch("/api/logout", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({}})).then(()=>{ localStorage.removeItem("pfb_token"); localStorage.removeItem("pfb_accounts"); location.reload(); });
+  }
+
+  function renderNav(){
+    const active = localStorage.getItem("pfb_tab") || "inbox";
+    nav.querySelectorAll("button").forEach(b => {
+      const t = b.dataset.tab || (b.id === "logoutBtn" ? "logout" : b.textContent.trim().replace(/[^a-z]/gi,"").toLowerCase());
+      b.classList.toggle("active", t === active);
+    });
+  }
+
+  async function api(path, opts){
+    const headers = { "Content-Type":"application/json", ...(opts && opts.headers || {}) };
+    const r = await fetch(path, { ...opts, headers, body: opts && opts.body ? JSON.stringify(opts.body) : undefined });
+    const j = await r.json().catch(()=>({}));
+    if (!r.ok) throw new Error(j.error || "Request failed: " + r.status);
+    return j;
+  }
+
+  function toast(msg, isErr=false){
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.className = "toast show" + (isErr?" err":"");
+    setTimeout(()=>{ t.className="toast"; }, 2600);
+  }
+
+  function esc(s){ return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  // ----- Login -----
+  async function doLogin(){
+    const email = document.getElementById("loginEmail").value.trim();
+    const pass = document.getElementById("loginPass").value;
+    const btn = document.getElementById("loginBtn");
+    btn.disabled = true; btn.textContent = "Connecting...";
+    const spin = document.getElementById("loginSpin"); spin.style.display="inline-block";
+    try {
+      const j = await api("/api/login", { method:"POST", body:{ email, pass } });
+      localStorage.setItem("pfb_token", j.account.id);
+      localStorage.setItem("pfb_accounts", JSON.stringify([...ACCOUNTS, j.account]));
+      state.account = j.account;
+      await refreshAccount();
+      showApp();
+      toast("Connected as " + j.account.name);
+      await loadInbox();
+    } catch(e){
+      toast(e.message, true);
+    } finally {
+      btn.disabled=false; btn.textContent="Connect &amp; Log In";
+      spin.style.display="none";
+    }
+  }
+
+  document.getElementById("loginBtn").addEventListener("click", doLogin);
+  document.getElementById("loginPass").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+  document.getElementById("browseBtn").addEventListener("click", async ()=>{
+    try {
+      const r = await api("/api/connect", { method:"POST", body:{ email: document.getElementById("loginEmail").value.trim(), pass: document.getElementById("loginPass").value } });
+      localStorage.setItem("pfb_token", r.account.id);
+      localStorage.setItem("pfb_accounts", JSON.stringify([...ACCOUNTS, r.account]));
+      state.account = r.account;
+      await refreshAccount(); showApp();
+      toast("Browser connected — " + r.account.name);
+      await loadInbox();
+    } catch(e){ toast(e.message, true); }
+  });
+
+  // ----- On load -----
+  async function init(){
+    if (!TOKEN) { renderNav(); return; }
+    try {
+      const { account } = await api("/api/account");
+      if (account) {
+        state.account = account;
+        localStorage.setItem("pfb_accounts", JSON.stringify([...ACCOUNTS, account]));
+        showApp();
+        renderNav();
+        await loadInbox();
+      }
+    } catch(e){ /* stale token */ }
+  }
+  init();
+
+  function showApp(){
+    document.getElementById("loginView").classList.add("hidden");
+    document.getElementById("appView").classList.remove("hidden");
+    renderNav();
+  }
+
+  // ----- Account -----
+  async function refreshAccount(){
+    if (!state.account) return;
+    try {
+      const j = await api("/api/account");
+      state.account = j.account;
+      document.getElementById("accName").textContent = j.account.name || "—";
+      document.getElementById("accEmail").textContent = j.account.email || "personal account";
+      const av = document.getElementById("accAvatar");
+      if (j.account.avatar_url) { av.innerHTML = `<img src="${esc(j.account.avatar_url)}" alt="" />`; }
+      else { av.textContent = (j.account.name||"").charAt(0).toUpperCase(); }
+      document.getElementById("sessList").innerHTML = (j.account.sessions || []).map(s => `<div class="tag"><span class="small">session</span> ${esc(s.id)}</div>`).join("") || '<div class="md">none</div>';
+    } catch(e){ toast(e.message, true); }
+  }
+
+  document.getElementById("logoutBtn").addEventListener("click", signOut);
+  document.getElementById("disconnectBtn").addEventListener("click", async ()=>{
+    try {
+      await api("/api/disconnect", { method:"POST" });
+      localStorage.removeItem("pfb_token");
+      localStorage.removeItem("pfb_accounts");
+      signOut();
+    } catch(e){ toast(e.message, true); }
+  });
+  document.getElementById("reconnectBtn").addEventListener("click", async ()=>{
+    const email = prompt("E-mail (optional)"), pass = prompt("Password (optional, leave blank for browser profile)");
+    try { const j = await api("/api/connect", { method:"POST", body:{ email, pass, profileUrl: state.account.profile_url, avatarUrl: state.account.avatar_url } }); toast("Reconnected as " + j.account.name); await refreshAccount(); await loadInbox(); }
+    catch(e){ toast(e.message, true); }
+  });
+
+  // ----- Inbox -----
+  async function loadInbox(){
+    try {
+      const j = await api("/api/messages");
+      state.messages = j.messages || [];
+      const list = document.getElementById("inboxList");
+      if (!state.messages.length){
+        list.innerHTML = '<div class="empty">No messages yet. Send one or wait for a message on your connected account.</div>';
+        return;
+      }
+      const f = (document.getElementById("inboxFilter").value || "").toLowerCase();
+      const filtered = state.messages.filter(m => f === "" || (m.text||"").toLowerCase().includes(f) || (m.sender_name||"").toLowerCase().includes(f));
+      list.innerHTML = filtered.map(m => {
+        const unread = m.status !== "read";
+        const cls = unread ? "user" : "ai";
+        return `<div class="message ${cls}">
+          <div class="msg-text">${esc(m.text||"")}</div>
+          <div class="msg-time">${m.sender_id||(m.recipient||"")} • ${new Date(m.created_at||0).toLocaleString()} • ${m.type||""}</div>
+        </div>`;
+      }).join("");
+    } catch(e){ toast(e.message, true); }
+  }
+
+  document.getElementById("inboxFilter").addEventListener("input", loadInbox);
+
+  // ----- Threads -----
+  async function loadThreads(){
+    try {
+      const j = await api("/api/messages");
+      const grid = document.getElementById("threadGrid");
+      if (!j.threads?.length){
+        grid.innerHTML = '<div class="empty">No conversations yet.</div>';
+        return;
+      }
+      grid.innerHTML = j.threads.map(t => `<div class="card" style="display:flex;gap:12px;align-items:center;cursor:pointer" onclick="window.location.hash='/threads'">
+        <div class="md" style="flex:1"><b>${esc(t.thread_id||"Thread")}</b><div class="small">Last message</div></div>
+        <div style="text-align:right"><span class="badge act sm">new</span></div>
+      </div>`).join("");
+    } catch(e){ toast(e.message, true); }
+  }
+  loadThreads();
+
+  // ----- Send -----
+  const lastRecipient = { val: "" };
+  document.getElementById("sendBtn").addEventListener("click", async () => {
+    const recipient = document.getElementById("chatRecipient").value.trim();
+    const text = document.getElementById("chatMessage").value.trim();
+    if (!recipient || !text) { toast("Recipient and message required", true); return; }
+    const btn = document.getElementById("sendBtn");
+    btn.disabled = true;
+    try {
+      await api("/api/messages", { method:"POST", body:{ recipient, text } });
+      document.getElementById("chatMessage").value = "";
+      lastRecipient.val = recipient;
+      toast("Message sent through your connected personal Facebook account");
+      await loadInbox();
+    } catch(e){ toast(e.message, true); }
+    btn.disabled = false;
+  });
+  document.getElementById("swipeBtn").addEventListener("click", async () => {
+    const recipient = document.getElementById("chatRecipient").value.trim();
+    const text = document.getElementById("chatMessage").value.trim();
+    if (!recipient || !text) { toast("Recipient and message required", true); return; }
+    const btn = document.getElementById("swipeBtn");
+    btn.disabled = true;
+    try {
+      // In a full implementation this would open the FB composer via Playwright.
+      await api("/api/messages", { method:"POST", body:{ recipient, text } });
+      document.getElementById("chatMessage").value = "";
+      lastRecipient.val = recipient;
+      toast("Sent (swipe flow — playwright driver pending)");
+    } catch(e){ toast(e.message, true); }
+    btn.disabled = false;
+  });
+  document.getElementById("replyBtn").addEventListener("click", async ()=>{
+    const last = state.messages.length ? state.messages[0] : null;
+    if (!last) { toast("No message to reply to"); return; }
+    const recipient = last.sender_id || last.recipient || last.thread_id || prompt("Recipient (optional)", last.sender_id||"");
+    const text = prompt("Reply text", last.text||"");
+    if (!text) return;
+    try {
+      await api("/api/messages", { method:"POST", body:{ recipient, text, threadId: last.id } });
+      toast("Queued reply as " + recipient);
+      await loadInbox();
+    } catch(e){ toast(e.message, true); }
+  });
+
+  // ----- Messages list -----
+  document.getElementById("msgFilter").addEventListener("input", () => { loadInbox(); });
+
+  // ----- AI Helper -----
+  document.getElementById("askAIBtn").addEventListener("click", async () => {
+    const model = document.getElementById("aiModel").value.trim() || "gpt-4o-mini";
+    const provider = document.getElementById("aiProvider").value;
+    const token = document.getElementById("aiAccount").value;
+    const endpoint = document.getElementById("aiEndpoint").value.trim();
+    const msgEl = document.getElementById("aiReply");
+    const status = document.getElementById("aiReplyStatus");
+    const btn = document.getElementById("askAIBtn");
+    btn.disabled = true;
+    msgEl.textContent = "..." + " ";
+    status.textContent = "Thinking...";
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"test", message: msgEl.textContent, settings:{ model, provider, aiAccount: token, endpoint: endpoint || undefined, aiAccountName: "personal-ai" } })
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "AI call failed");
+      msgEl.innerHTML = esc(j.reply || "No reply");
+      status.textContent = "AI replied";
+      toast("AI reply generated");
+    } catch(e){ msgEl.textContent = "Error: " + e.message; status.textContent = "Failed"; toast(e.message, true); }
+    btn.disabled = false;
+  });
+
+  // ----- Logs -----
+  setInterval(async () => {
+    if (state.account) {
+      try { const j = await api("/api/logs"); if (j.length) state.logs = j; }
+      catch(e){}
+    }
+  }, 3000);
+
+  // ----- Tab switching -----
+  nav.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const id = btn.dataset.tab || (btn.id === "logoutBtn" ? "logout" : btn.textContent.trim().replace(/[^a-z]/gi,"").toLowerCase());
+    if (id === "logout") { signOut(); return; }
+    if (id === "inbox") loadInbox();
+    localStorage.setItem("pfb_tab", id);
+    paneMap[id].classList.remove("hidden");
+    document.querySelectorAll("[data-pane]").forEach(p => { if (p !== paneMap[id]) p.classList.add("hidden"); });
+    tabs.forEach(t => nav.querySelector(`[data-tab="${t}"]`)?.classList.toggle("active", t === id));
+  });
+  const saved = localStorage.getItem("pfb_tab") || "inbox";
+  paneMap[saved].classList.remove("hidden");
+  document.querySelectorAll("[data-pane]").forEach(p => { if (p !== paneMap[saved]) p.classList.add("hidden"); });
+  nav.querySelectorAll("button").forEach(b => { b.classList.toggle("active", b.dataset.tab === saved || b.id === "logoutBtn"); });
+})();
+</script>
+</body>
+</html>
